@@ -231,18 +231,6 @@ If the window is sitting on an Instagram login screen, log in and click **Save I
 </details>
 
 
-<details>
-<summary><b>Linux ARM64: Chrome doesn't download</b></summary>
-
-<br>
-
-Chrome is automatically downloaded on first run if no system Chrome/Chromium is found; No action is needed for most platforms. The exception is Linux ARM64, where Chrome For Testing isn't available yet ([coming Q2 2026!](https://blog.chromium.org/2026/03/bringing-chrome-to-arm64-linux-devices.html)).
-
-On Linux ARM64, install Chrome, Chromium, or Brave manually before running Reels.
-
-</details>
-
-
 <details><summary><b>High CPU usage</b></summary>
 
 <br>

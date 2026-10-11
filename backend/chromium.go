@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	chromeVersion = "147.0.7727.50"
+	chromeVersion = "155.0.8059.39"
 	chromeBaseURL = "https://storage.googleapis.com/chrome-for-testing-public"
 )
 
@@ -22,10 +22,12 @@ const (
 func platformString() (string, error) {
 	switch runtime.GOOS {
 	case "linux":
-		if runtime.GOARCH == "amd64" {
+		switch runtime.GOARCH {
+		case "amd64":
 			return "linux64", nil
+		case "arm64":
+			return "linux-arm64", nil
 		}
-		// linux arm64 support coming Q2 2026
 	case "darwin":
 		if runtime.GOARCH == "arm64" {
 			return "mac-arm64", nil
@@ -37,13 +39,13 @@ func platformString() (string, error) {
 // chromeBinaryName returns the name of the Chrome executable inside the zip.
 // macOS arm64: chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
 // Linux amd64: chrome-linux64/chrome
+// Linux arm64: chrome-linux-arm64/chrome
 func chromeBinaryName(platform string) string {
 	switch platform {
 	case "mac-arm64":
 		return filepath.Join("chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing")
-	case "linux64":
-		return filepath.Join("chrome-linux64", "chrome")
-	// linux arm64 support coming Q2 2026
+	case "linux64", "linux-arm64":
+		return filepath.Join("chrome-"+platform, "chrome")
 	default:
 		return ""
 	}
@@ -52,7 +54,7 @@ func chromeBinaryName(platform string) string {
 // EnsureChromium returns the path to a Chrome binary, using the following priority:
 //  1. Our managed Chrome download in ~/.local/share/reels/chromium/
 //  2. A system-installed Chrome/Chromium found via PATH or well-known locations
-//  3. Auto-download Chrome for Testing if no binary was found in either locations (linux64, mac-arm64)
+//  3. Auto-download Chrome for Testing if no binary was found in either locations (linux64, linux-arm64, mac-arm64)
 func EnsureChromium(userDataDir string) (string, error) {
 	chromiumDir := filepath.Join(filepath.Dir(userDataDir), "chromium")
 
