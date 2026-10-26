@@ -31,7 +31,8 @@ type (
 	}
 	backendEventMsg backend.Event
 	videoErrorMsg   struct {
-		err error
+		index int
+		err   error
 	}
 	videoReadyMsg struct {
 		index           int
@@ -40,6 +41,12 @@ type (
 		chatFloating    []floatingItem // chat-mode sender + reactor pfps
 	}
 	selfReactedMsg struct {
+		index int
+	}
+	reelEndedMsg struct {
+		gen int64
+	}
+	autoScrollSkipMsg struct {
 		index int
 	}
 	shazamResultMsg struct {
@@ -108,6 +115,7 @@ type Model struct {
 	status  status
 
 	showNavbar    bool
+	autoScroll    bool
 	browsingFrame *screen.Screen
 
 	// Comments panel encapsulates all comments UI state
@@ -202,6 +210,7 @@ func NewModel(userDataDir, logDir, cacheDir, configDir string, output io.Writer,
 		shazam:     NewShazamPanel(),
 		flags:      flags,
 		showNavbar: settings.ShowNavbar,
+		autoScroll: settings.AutoScroll,
 		version:    version,
 	}
 }
@@ -248,6 +257,10 @@ func (m Model) listenForEvents() tea.Msg {
 		return nil
 	}
 	return backendEventMsg(event)
+}
+
+func (m Model) listenForReelEnd() tea.Msg {
+	return reelEndedMsg{<-m.player.Ended()}
 }
 
 // loadCurrentReel resolves the reel the feed is parked on.
@@ -408,6 +421,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(
 			m.loadCurrentReel,
 			m.listenForEvents,
+			m.listenForReelEnd,
 			m.musicTick(),
 		)
 
@@ -475,7 +489,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.musicTick()
 
 	case volumeHoldMsg, volumeFadeTickMsg, dmNotifyHoldMsg, dmNotifyFadeTickMsg,
-		chatBannerHoldMsg, chatBannerFadeTickMsg:
+		chatBannerHoldMsg, chatBannerFadeTickMsg, autoScrollHoldMsg, autoScrollFadeTickMsg:
 		if handled, updated, cmd := m.updateHUD(msg); handled {
 			return updated, cmd
 		}
@@ -529,8 +543,27 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.shazam.SetResult(msg.pk, msg.song, msg.cover, msg.err)
 		return m, nil
 
+	case reelEndedMsg:
+		// ignore the end of a reel the user already skipped past
+		if m.autoScroll && msg.gen == m.player.PlayGen() && !m.panelOpen() {
+			if cmd := m.navigateToReel(1); cmd != nil {
+				return m, tea.Batch(cmd, m.listenForReelEnd)
+			}
+		}
+		return m, m.listenForReelEnd
+
 	case videoErrorMsg:
 		m.status = statusVideoError
+		if m.autoScroll {
+			return m, m.autoScrollSkip(msg.index)
+		}
+		return m, nil
+
+	case autoScrollSkipMsg:
+		if m.autoScroll && m.status == statusVideoError && m.currentReel != nil &&
+			m.currentReel.Index == msg.index && !m.panelOpen() {
+			return m, m.navigateToReel(1)
+		}
 		return m, nil
 	}
 

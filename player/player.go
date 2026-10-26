@@ -27,6 +27,9 @@ type AVPlayer struct {
 	needsRedrawVid atomic.Bool
 	volume         atomic.Value // float64, 0.0–1.0
 
+	playGen atomic.Int64 // bumped by each Play call
+	ended   chan int64   // playGen of each video that played to the end
+
 	playMu   sync.Mutex
 	configMu sync.Mutex
 
@@ -97,6 +100,7 @@ func NewAVPlayer() *AVPlayer {
 	p := &AVPlayer{
 		output:      os.Stdout,
 		retinaScale: 1,
+		ended:       make(chan int64, 1),
 	}
 	p.volume.Store(float64(1))
 	return p
@@ -212,8 +216,21 @@ func (p *AVPlayer) Play(videoPath string) error {
 		return err
 	}
 
-	go p.playbackLoop(videoPath, session)
+	gen := p.playGen.Add(1)
+	go p.playbackLoop(videoPath, session, gen)
 	return nil
+}
+
+// PlayGen returns a counter that increments on every Play call.
+func (p *AVPlayer) PlayGen() int64 {
+	return p.playGen.Load()
+}
+
+// Ended receives the PlayGen of a video each time it plays to the end, just
+// before it loops. Sends never block playback, so an end is dropped if the
+// previous one hasn't been received yet.
+func (p *AVPlayer) Ended() <-chan int64 {
+	return p.ended
 }
 
 // initSession creates a configured play session ready for rendering.
@@ -245,7 +262,7 @@ func (p *AVPlayer) initSession(videoPath string) (*playSession, error) {
 
 // playbackLoop runs the current session, then loops by creating new sessions.
 // Holds playMu for its entire duration so Close() can wait for playback to finish.
-func (p *AVPlayer) playbackLoop(videoPath string, session *playSession) {
+func (p *AVPlayer) playbackLoop(videoPath string, session *playSession, gen int64) {
 	defer p.playMu.Unlock()
 
 	for {
@@ -255,6 +272,11 @@ func (p *AVPlayer) playbackLoop(videoPath string, session *playSession) {
 
 		if !p.playing.Load() {
 			return
+		}
+
+		select {
+		case p.ended <- gen:
+		default:
 		}
 
 		var err error

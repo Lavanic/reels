@@ -537,6 +537,14 @@ func (m Model) updateBrowsing(key string) (tea.Model, tea.Cmd) {
 		showNavbar := m.backend.ToggleNavbar()
 		m.showNavbar = showNavbar
 
+	case slices.Contains(config.KeysAutoScroll, key):
+		m.autoScroll = m.backend.ToggleAutoScroll()
+		cmd := m.hud.ShowAutoScroll()
+		if m.autoScroll && m.status == statusVideoError && m.currentReel != nil {
+			cmd = tea.Batch(cmd, m.autoScrollSkip(m.currentReel.Index))
+		}
+		return m, cmd
+
 	case slices.Contains(config.KeysReelSizeInc, key):
 		m.resizeReel(config.ReelSizeStep)
 
@@ -576,7 +584,7 @@ func (m *Model) startPlayback(index int) tea.Cmd {
 	return func() tea.Msg {
 		videoPath, pfpPath, floatingFiles, err := m.backend.Download(index)
 		if err != nil {
-			return videoErrorMsg{err}
+			return videoErrorMsg{index, err}
 		}
 		var pfp *player.Img
 		if pfpPath != "" {
@@ -604,7 +612,7 @@ func (m *Model) startPlayback(index int) tea.Cmd {
 		chat := m.chatFloating(index)
 
 		if err := m.player.Play(videoPath); err != nil {
-			return videoErrorMsg{err}
+			return videoErrorMsg{index, err}
 		}
 
 		return videoReadyMsg{index: index, pfp: pfp, contextFloating: floating, chatFloating: chat}
@@ -626,6 +634,14 @@ func (m Model) prefetch(index int) {
 func (m Model) musicTick() tea.Cmd {
 	return tea.Tick(300*time.Millisecond, func(t time.Time) tea.Msg {
 		return musicTickMsg{}
+	})
+}
+
+// autoScrollSkip moves past a reel that can't play, like a post with no video,
+// after it has been on screen for a few seconds.
+func (m Model) autoScrollSkip(index int) tea.Cmd {
+	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+		return autoScrollSkipMsg{index}
 	})
 }
 
